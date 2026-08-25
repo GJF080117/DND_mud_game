@@ -15,6 +15,7 @@
 
 namespace {
 
+// 测试时按顺序返回预设数字，每次运行都会得到相同结果。
 class SequenceRandom final : public dndmud::IRandomSource {
 public:
     explicit SequenceRandom(std::vector<int> values) : values_(std::move(values)) {}
@@ -37,6 +38,7 @@ private:
 
 int failures = 0;
 
+// 检查条件是否成立；出错时记录位置，并继续运行后面的测试。
 void check(bool condition, const char* expression, int line) {
     if (!condition) {
         std::cerr << "FAIL line " << line << ": " << expression << '\n';
@@ -46,6 +48,7 @@ void check(bool condition, const char* expression, int line) {
 
 #define CHECK(expression) check((expression), #expression, __LINE__)
 
+// 验证命令的空白处理、大小写、短别名和未知分支。
 void testCommandParser() {
     dndmud::CommandParser parser;
     const auto move = parser.parse("  GO East  ");
@@ -55,6 +58,7 @@ void testCommandParser() {
     CHECK(parser.parse("unknown").type == dndmud::CommandType::Unknown);
 }
 
+// 验证地图连接及敌人与房间的关联。
 void testWorld() {
     dndmud::World world = dndmud::World::createDemo();
     CHECK(world.destination(0, dndmud::Direction::North) == 1);
@@ -63,6 +67,7 @@ void testWorld() {
     CHECK(world.enemyInRoom(2) != nullptr);
 }
 
+// 固定返回最高攻击数和最高伤害数，验证双倍伤害和击败结果。
 void testCriticalHit() {
     SequenceRandom random({20, 6});
     dndmud::CombatSystem combat(random);
@@ -75,6 +80,7 @@ void testCriticalHit() {
     CHECK(result.targetDefeated);
 }
 
+// 验证保存、覆盖、备份清理、读取和损坏文件拒绝。
 void testSaveRoundTrip() {
     const auto path = std::filesystem::temp_directory_path() / "dndmud_demo_test_save.txt";
     std::error_code ignored;
@@ -110,6 +116,7 @@ void testSaveRoundTrip() {
     std::filesystem::remove(path, ignored);
 }
 
+// 连续执行移动和攻击，验证一局最短流程可以正常通关。
 void testVerticalSlice() {
     SequenceRandom random({20, 6});
     dndmud::Game game(random);
@@ -130,6 +137,7 @@ void testVerticalSlice() {
 } // namespace
 
 int main() {
+    // 测试保持互相独立，新增模块时在此注册对应测试函数。
     testCommandParser();
     testWorld();
     testCriticalHit();

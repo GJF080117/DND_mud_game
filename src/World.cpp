@@ -8,6 +8,7 @@
 namespace dndmud {
 namespace {
 
+// 方向命令只使用英文，因此这里只处理英文字母大小写。
 std::string asciiLower(std::string_view text) {
     std::string value(text);
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
@@ -22,6 +23,7 @@ World::World(std::map<int, Room> rooms, Enemy enemy)
     : rooms_(std::move(rooms)), enemy_(std::move(enemy)) {}
 
 World World::createDemo() {
+    // 每个房间都有固定编号，出口只记录下一个房间的编号。
     std::map<int, Room> rooms;
     rooms.emplace(0, Room{
         0,
@@ -42,6 +44,7 @@ World World::createDemo() {
         {{Direction::West, 1}},
         std::string("grey_wolf")});
 
+    // 当前演示版本只有一个敌人，房间通过敌人编号找到它。
     Enemy wolf("grey_wolf", "灰牙狼", CombatStats{10, 11, 2, 1, 4});
     return World(std::move(rooms), std::move(wolf));
 }
@@ -61,6 +64,7 @@ std::optional<int> World::destination(int roomId, Direction direction) const {
 
 Enemy* World::enemyInRoom(int roomId) {
     const auto& enemyId = room(roomId).enemyId;
+    // 已死亡敌人不再作为可交互目标返回。
     if (enemyId && *enemyId == enemy_.id() && enemy_.isAlive()) {
         return &enemy_;
     }

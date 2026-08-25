@@ -73,6 +73,9 @@ ARM64/
 /savegame.txt.bak
 /savegame.txt.tmp
 
+# Local architecture reference requested for this workspace
+/PROJECT_ARCHITECTURE.md
+
 # Editor and operating-system files
 .vscode/
 .idea/

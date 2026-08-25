@@ -5,6 +5,7 @@
 
 namespace dndmud {
 
+// 角色总是以满生命创建，避免产生“已死亡但未初始化”的对象。
 Character::Character(std::string name, CombatStats stats)
     : name_(std::move(name)), stats_(stats), health_(stats.maxHealth) {}
 
@@ -18,12 +19,14 @@ int Character::damageSides() const noexcept { return stats_.damageSides; }
 bool Character::isAlive() const noexcept { return health_ > 0; }
 
 int Character::takeDamage(int amount) noexcept {
+    // 同时限制负伤害和过量伤害，返回值反映真正扣除的生命。
     const int applied = std::min(health_, std::max(0, amount));
     health_ -= applied;
     return applied;
 }
 
 int Character::heal(int amount) noexcept {
+    // 治疗不能反向造成伤害，也不能突破最大生命值。
     const int previous = health_;
     health_ = std::min(maxHealth(), health_ + std::max(0, amount));
     return health_ - previous;
@@ -34,6 +37,7 @@ void Character::setHealth(int health) noexcept {
 }
 
 Player::Player(std::string name)
+    // 当前演示版本中，玩家有 24 点生命；攻击较容易成功，伤害为 3 到 8。
     : Character(std::move(name), CombatStats{24, 12, 4, 2, 6}) {}
 
 int Player::roomId() const noexcept { return roomId_; }

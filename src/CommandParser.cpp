@@ -7,6 +7,7 @@
 namespace dndmud {
 namespace {
 
+// 命令只使用英文；中文只用于显示，因此可以直接转换英文字母大小写。
 std::string normalize(std::string_view input) {
     std::string value(input);
     const auto first = value.find_first_not_of(" \t\r\n");
@@ -35,6 +36,7 @@ ParsedCommand CommandParser::parse(std::string_view input) const {
     stream >> verb;
     std::getline(stream >> std::ws, argument);
 
+    // 完整命令和简写都在这里识别，后面的代码只需要判断命令种类。
     if (verb == "help" || verb == "?") return {CommandType::Help, argument};
     if (verb == "look" || verb == "l") return {CommandType::Look, argument};
     if (verb == "status") return {CommandType::Status, argument};
@@ -49,6 +51,7 @@ ParsedCommand CommandParser::parse(std::string_view input) const {
         || verb == "south" || verb == "s" || verb == "west" || verb == "w") {
         return {CommandType::Move, verb};
     }
+    // 无法识别时保留整理后的原文，方便以后改进错误提示。
     return {CommandType::Unknown, normalized};
 }
 

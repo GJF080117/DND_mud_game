@@ -7,8 +7,10 @@
 namespace dndmud {
 namespace {
 
+// 修改存档内容或顺序时要更换版本号，避免用错误方式读取旧存档。
 constexpr const char* SaveHeader = "DNDMUD_SAVE_V1";
 
+// 保存和读取前都检查数值范围，防止错误数据进入游戏。
 bool validSnapshot(const GameSnapshot& snapshot) {
     return !snapshot.playerName.empty()
         && snapshot.playerName.size() <= 40
@@ -33,6 +35,7 @@ bool SaveService::save(
         return false;
     }
 
+    // 先完整写入临时文件，避免写入中断直接破坏正式存档。
     const std::filesystem::path temporary = path.string() + ".tmp";
     std::ofstream output(temporary, std::ios::trunc);
     if (!output) {
@@ -65,6 +68,7 @@ bool SaveService::save(
     }
 
     if (hadPreviousSave) {
+        // 保留旧版本，直到新临时文件成功替换为正式文件。
         std::filesystem::remove(backup, filesystemError);
         filesystemError.clear();
         std::filesystem::rename(path, backup, filesystemError);
@@ -81,6 +85,7 @@ bool SaveService::save(
         error = "无法替换正式存档：" + filesystemError.message();
         std::filesystem::remove(temporary, filesystemError);
         if (hadPreviousSave) {
+            // 替换失败时尽力恢复旧存档；原始错误仍返回给调用方。
             filesystemError.clear();
             std::filesystem::rename(backup, path, filesystemError);
         }
@@ -109,6 +114,7 @@ std::optional<GameSnapshot> SaveService::load(
     int wonValue = 0;
     GameSnapshot snapshot;
 
+    // 当前版本按固定顺序读取；缺少字段、字段改名或版本不同都算读取失败。
     if (!(input >> header) || header != SaveHeader
         || !(input >> key) || key != "player_name" || !(input >> std::quoted(snapshot.playerName))
         || !(input >> key) || key != "player_health" || !(input >> snapshot.playerHealth)
@@ -122,6 +128,7 @@ std::optional<GameSnapshot> SaveService::load(
 
     snapshot.won = wonValue == 1;
     std::string trailing;
+    // 文件末尾出现多余内容或数值超出范围时，拒绝使用整个存档。
     if ((wonValue != 0 && wonValue != 1) || (input >> trailing) || !validSnapshot(snapshot)) {
         error = "存档字段包含非法值。";
         return std::nullopt;

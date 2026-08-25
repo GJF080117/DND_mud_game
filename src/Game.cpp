@@ -7,6 +7,7 @@
 namespace dndmud {
 namespace {
 
+// 地图内部使用英文方向，这里补充中文，方便玩家阅读。
 std::string displayName(Direction direction) {
     switch (direction) {
     case Direction::North: return "north（北）";
@@ -18,6 +19,7 @@ std::string displayName(Direction direction) {
 }
 
 void printAttack(std::ostream& output, const Character& attacker, const AttackResult& result) {
+    // 战斗模块负责计算，这里只把计算结果显示成一句话。
     output << attacker.name() << "掷出 d20=" << result.d20Roll;
     if (!result.hit) {
         output << "，攻击未命中。\n";
@@ -42,8 +44,10 @@ void Game::newGame(std::string playerName) {
         playerName = "冒险者";
     }
     if (playerName.size() > 40) {
+        // 当前存档最多保存 40 字节的名称，因此新游戏也使用相同限制。
         playerName.resize(40);
     }
+    // 新游戏必须同时重建世界，避免沿用上一局的敌人生命值。
     world_ = World::createDemo();
     player_ = Player(std::move(playerName));
 }
@@ -79,6 +83,7 @@ void Game::run(
 
     std::string line;
     bool running = true;
+    // 使用整行输入，允许后续命令携带带空格参数。
     while (running && player_.isAlive()) {
         output << "\n> ";
         if (!std::getline(input, line)) {
@@ -94,6 +99,7 @@ bool Game::executeLine(
     std::ostream& output,
     const std::filesystem::path& savePath) {
     const ParsedCommand command = commandParser_.parse(line);
+    // 根据识别出的命令种类，选择对应的游戏操作。
     switch (command.type) {
     case CommandType::Help: showHelp(output); break;
     case CommandType::Look: showRoom(output); break;
@@ -138,6 +144,7 @@ void Game::showRoom(std::ostream& output) const {
         output << "敌人：" << enemy->name() << "（HP " << enemy->health()
                << '/' << enemy->maxHealth() << "）\n";
     } else if (current.enemyId) {
+        // 房间原本有敌人，但现在找不到活着的敌人，说明它已经被击败。
         output << "灰牙狼已经倒下，货箱上的余烬徽记重新亮起。\n";
     }
 
@@ -188,11 +195,13 @@ void Game::fight(std::ostream& output) {
     const AttackResult playerAttack = combatSystem_.attack(player_, *enemy);
     printAttack(output, player_, playerAttack);
     if (playerAttack.targetDefeated) {
+        // 玩家击败敌人后立即结束本轮，不再执行敌人反击。
         player_.setWon(true);
         output << enemy->name() << "倒下了。你取回余烬徽记，Demo 主线完成。\n";
         return;
     }
 
+    // 敌人只有在承受攻击后仍存活时才能反击。
     const AttackResult enemyAttack = combatSystem_.attack(*enemy, player_);
     printAttack(output, *enemy, enemyAttack);
     if (enemyAttack.targetDefeated) {
@@ -209,6 +218,7 @@ void Game::useItem(const std::string& argument, std::ostream& output) {
         return;
     }
     if (player_.health() == player_.maxHealth()) {
+        // 满血时不消耗稀缺物品。
         output << "生命值已满，无需使用药水。\n";
         return;
     }
@@ -223,6 +233,7 @@ void Game::useItem(const std::string& argument, std::ostream& output) {
 }
 
 GameSnapshot Game::snapshot() const {
+    // 只保存继续游戏必需的数据，不直接保存整个对象的内存内容。
     return GameSnapshot{
         player_.name(),
         player_.health(),
@@ -233,6 +244,7 @@ GameSnapshot Game::snapshot() const {
 }
 
 void Game::restore(const GameSnapshot& snapshot) {
+    // 先创建一局正常的新游戏，再用存档中的数值恢复进度。
     world_ = World::createDemo();
     player_ = Player(snapshot.playerName);
     player_.setHealth(snapshot.playerHealth);
