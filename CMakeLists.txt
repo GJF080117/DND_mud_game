@@ -17,18 +17,24 @@ add_library(dndmud_core
 
 target_include_directories(dndmud_core PUBLIC include)
 
-if(MSVC)
-    target_compile_options(dndmud_core PRIVATE /W4 /permissive- /utf-8)
-else()
-    target_compile_options(dndmud_core PRIVATE -Wall -Wextra -Wpedantic)
-endif()
+function(configure_dndmud_target target_name)
+    if(MSVC)
+        target_compile_options(${target_name} PRIVATE /W4 /permissive- /utf-8)
+    else()
+        target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endfunction()
+
+configure_dndmud_target(dndmud_core)
 
 add_executable(dndmud_demo src/main.cpp)
 target_link_libraries(dndmud_demo PRIVATE dndmud_core)
+configure_dndmud_target(dndmud_demo)
 
 include(CTest)
 if(BUILD_TESTING)
     add_executable(dndmud_tests tests/test_main.cpp)
     target_link_libraries(dndmud_tests PRIVATE dndmud_core)
+    configure_dndmud_target(dndmud_tests)
     add_test(NAME dndmud_tests COMMAND dndmud_tests)
 endif()

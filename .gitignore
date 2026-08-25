@@ -1,4 +1,84 @@
+# CMake build directories
 /build/
+/build-*/
+/out/
+/cmake-build-*/
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+CMakeUserPresets.json
+cmake_install.cmake
+CTestTestfile.cmake
+DartConfiguration.tcl
+Testing/
+_deps/
+compile_commands.json
+install_manifest.txt
+
+# Ninja generated files
+build.ninja
+.ninja_deps
+.ninja_log
+
+# Visual Studio local state
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.opendb
+*.opendb
+*.sdf
+ipch/
+
+# Visual Studio and MSVC build output
+[Dd]ebug/
+[Rr]elease/
+[Rr]elWithDebInfo/
+[Mm]inSizeRel/
+x64/
+x86/
+ARM/
+ARM64/
+[Bb]in/
+[Oo]bj/
+*.obj
+*.iobj
+*.pch
+*.pdb
+*.ipdb
+*.idb
+*.ilk
+*.tlog
+*.lastbuildstate
+*.exp
+*.lib
+*.dll
+*.exe
+
+# GCC and Clang build output
+*.o
+*.a
+*.so
+*.dylib
+*.dSYM/
+*.gcda
+*.gcno
+*.gcov
+
+# Game runtime files
 /savegame.txt
 /savegame.txt.bak
 /savegame.txt.tmp
+
+# Editor and operating-system files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
