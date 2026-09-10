@@ -7,135 +7,227 @@
 namespace dndmud {
 namespace {
 
-// 修改存档内容或顺序时要更换版本号，避免用错误方式读取旧存档。
-constexpr const char* SaveHeader = "DNDMUD_SAVE_V1";
+constexpr const char* SaveHeaderV1 = "DNDMUD_COMPLETE_SAVE_V1";
+constexpr const char* SaveHeaderV2 = "DNDMUD_COMPLETE_SAVE_V2";
 
-// 保存和读取前都检查数值范围，防止错误数据进入游戏。
-bool validSnapshot(const GameSnapshot& snapshot) {
-    return !snapshot.playerName.empty()
-        && snapshot.playerName.size() <= 40
-        && snapshot.playerHealth >= 0
-        && snapshot.playerHealth <= 24
-        && snapshot.roomId >= 0
-        && snapshot.roomId <= 2
-        && snapshot.potionCount >= 0
-        && snapshot.potionCount <= 20
-        && snapshot.enemyHealth >= 0
-        && snapshot.enemyHealth <= 10;
+bool basicValuesAreValid(const SavedGame& game) {
+    const int classValue = static_cast<int>(game.player.playerClass);
+    return !game.player.name.empty()
+        && game.player.name.size() <= 80
+        && classValue >= 1 && classValue <= 3
+        && game.player.level >= 1 && game.player.level <= 20
+        && game.player.experience >= 0
+        && game.player.maxHealth > 0 && game.player.maxHealth <= 500
+        && game.player.health >= 0 && game.player.health <= game.player.maxHealth
+        && game.player.gold >= 0 && game.player.gold <= 1000000
+        && game.player.skillUses >= 0 && game.player.skillUses <= 2
+        && game.currentRoom >= 0
+        && game.mainQuestStage >= 0 && game.mainQuestStage <= 6
+        && game.sideQuestStage >= 0 && game.sideQuestStage <= 2
+        && game.coastQuestStage >= 0 && game.coastQuestStage <= 2
+        && game.player.inventory.size() <= 200
+        && game.defeatedEnemies.size() <= 100;
 }
 
 } // namespace
 
 bool SaveService::save(
-    const GameSnapshot& snapshot,
+    const SavedGame& game,
     const std::filesystem::path& path,
     std::string& error) {
-    if (!validSnapshot(snapshot)) {
-        error = "存档数据不在允许范围内。";
+    if (!basicValuesAreValid(game)) {
+        error = "游戏数据超出允许范围。";
         return false;
     }
 
-    // 先完整写入临时文件，避免写入中断直接破坏正式存档。
-    const std::filesystem::path temporary = path.string() + ".tmp";
+    std::error_code fileError;
+    std::filesystem::create_directories(path.parent_path(), fileError);
+    if (fileError) {
+        error = "无法创建存档目录：" + fileError.message();
+        return false;
+    }
+
+    auto temporary = path;
+    temporary += ".tmp";
+    auto backup = path;
+    backup += ".bak";
     std::ofstream output(temporary, std::ios::trunc);
     if (!output) {
-        error = "无法创建临时存档文件。";
+        error = "无法创建临时存档。";
         return false;
     }
 
-    output << SaveHeader << '\n'
-           << "player_name " << std::quoted(snapshot.playerName) << '\n'
-           << "player_health " << snapshot.playerHealth << '\n'
-           << "room_id " << snapshot.roomId << '\n'
-           << "potion_count " << snapshot.potionCount << '\n'
-           << "enemy_health " << snapshot.enemyHealth << '\n'
-           << "won " << (snapshot.won ? 1 : 0) << '\n';
+    output << SaveHeaderV2 << '\n'
+           << "name " << std::quoted(game.player.name) << '\n'
+           << "class " << static_cast<int>(game.player.playerClass) << '\n'
+           << "level " << game.player.level << '\n'
+           << "experience " << game.player.experience << '\n'
+           << "health " << game.player.health << '\n'
+           << "max_health " << game.player.maxHealth << '\n'
+           << "base_defense " << game.player.baseDefense << '\n'
+           << "base_attack " << game.player.baseAttack << '\n'
+           << "damage_min " << game.player.damageMinimum << '\n'
+           << "damage_max " << game.player.damageMaximum << '\n'
+           << "gold " << game.player.gold << '\n'
+           << "skill_uses " << game.player.skillUses << '\n'
+           << "weapon " << std::quoted(game.player.equippedWeapon) << '\n'
+           << "armor " << std::quoted(game.player.equippedArmor) << '\n'
+           << "room " << game.currentRoom << '\n'
+           << "main_quest " << game.mainQuestStage << '\n'
+           << "side_quest " << game.sideQuestStage << '\n'
+           << "coast_quest " << game.coastQuestStage << '\n'
+           << "finished " << (game.finished ? 1 : 0) << '\n'
+           << "inventory_count " << game.player.inventory.size() << '\n';
+    for (const auto& itemId : game.player.inventory) {
+        output << "inventory_item " << std::quoted(itemId) << '\n';
+    }
+    output << "defeated_count " << game.defeatedEnemies.size() << '\n';
+    for (const auto& enemyId : game.defeatedEnemies) {
+        output << "defeated_enemy " << std::quoted(enemyId) << '\n';
+    }
     output.close();
     if (!output) {
         error = "写入存档时发生错误。";
-        std::error_code ignored;
-        std::filesystem::remove(temporary, ignored);
+        std::filesystem::remove(temporary, fileError);
         return false;
     }
 
-    std::error_code filesystemError;
-    const std::filesystem::path backup = path.string() + ".bak";
-    const bool hadPreviousSave = std::filesystem::exists(path, filesystemError);
-    if (filesystemError) {
-        error = "无法检查旧存档：" + filesystemError.message();
-        std::filesystem::remove(temporary, filesystemError);
+    const bool hadOldSave = std::filesystem::exists(path, fileError);
+    if (fileError) {
+        error = "无法检查旧存档：" + fileError.message();
+        std::filesystem::remove(temporary, fileError);
         return false;
     }
 
-    if (hadPreviousSave) {
-        // 保留旧版本，直到新临时文件成功替换为正式文件。
-        std::filesystem::remove(backup, filesystemError);
-        filesystemError.clear();
-        std::filesystem::rename(path, backup, filesystemError);
-        if (filesystemError) {
-            error = "无法备份旧存档：" + filesystemError.message();
-            std::filesystem::remove(temporary, filesystemError);
+    if (hadOldSave) {
+        std::filesystem::remove(backup, fileError);
+        fileError.clear();
+        std::filesystem::rename(path, backup, fileError);
+        if (fileError) {
+            error = "无法备份旧存档：" + fileError.message();
+            std::filesystem::remove(temporary, fileError);
             return false;
         }
     }
 
-    filesystemError.clear();
-    std::filesystem::rename(temporary, path, filesystemError);
-    if (filesystemError) {
-        error = "无法替换正式存档：" + filesystemError.message();
-        std::filesystem::remove(temporary, filesystemError);
-        if (hadPreviousSave) {
-            // 替换失败时尽力恢复旧存档；原始错误仍返回给调用方。
-            filesystemError.clear();
-            std::filesystem::rename(backup, path, filesystemError);
+    fileError.clear();
+    std::filesystem::rename(temporary, path, fileError);
+    if (fileError) {
+        error = "无法替换正式存档：" + fileError.message();
+        std::filesystem::remove(temporary, fileError);
+        if (hadOldSave) {
+            fileError.clear();
+            std::filesystem::rename(backup, path, fileError);
         }
         return false;
     }
 
-    if (hadPreviousSave) {
-        std::filesystem::remove(backup, filesystemError);
-    }
-
+    if (hadOldSave) std::filesystem::remove(backup, fileError);
     error.clear();
     return true;
 }
 
-std::optional<GameSnapshot> SaveService::load(
+std::optional<SavedGame> SaveService::load(
     const std::filesystem::path& path,
     std::string& error) {
     std::ifstream input(path);
     if (!input) {
-        error = "没有找到可读取的存档。";
+        error = "没有找到该存档。";
         return std::nullopt;
     }
 
+    SavedGame game;
     std::string header;
     std::string key;
-    int wonValue = 0;
-    GameSnapshot snapshot;
+    int classValue = 0;
+    int finishedValue = 0;
 
-    // 当前版本按固定顺序读取；缺少字段、字段改名或版本不同都算读取失败。
-    if (!(input >> header) || header != SaveHeader
-        || !(input >> key) || key != "player_name" || !(input >> std::quoted(snapshot.playerName))
-        || !(input >> key) || key != "player_health" || !(input >> snapshot.playerHealth)
-        || !(input >> key) || key != "room_id" || !(input >> snapshot.roomId)
-        || !(input >> key) || key != "potion_count" || !(input >> snapshot.potionCount)
-        || !(input >> key) || key != "enemy_health" || !(input >> snapshot.enemyHealth)
-        || !(input >> key) || key != "won" || !(input >> wonValue)) {
+    auto readNumber = [&](const char* expected, int& value) {
+        return (input >> key) && key == expected && (input >> value);
+    };
+    auto readText = [&](const char* expected, std::string& value) {
+        return (input >> key) && key == expected && (input >> std::quoted(value));
+    };
+
+    if (!(input >> header) || (header != SaveHeaderV1 && header != SaveHeaderV2)) {
+        error = "存档格式损坏或版本不匹配。";
+        return std::nullopt;
+    }
+    const bool isVersionOne = header == SaveHeaderV1;
+
+    if (!readText("name", game.player.name)
+        || !readNumber("class", classValue)
+        || !readNumber("level", game.player.level)
+        || !readNumber("experience", game.player.experience)
+        || !readNumber("health", game.player.health)
+        || !readNumber("max_health", game.player.maxHealth)
+        || !readNumber("base_defense", game.player.baseDefense)
+        || !readNumber("base_attack", game.player.baseAttack)
+        || !readNumber("damage_min", game.player.damageMinimum)
+        || !readNumber("damage_max", game.player.damageMaximum)
+        || !readNumber("gold", game.player.gold)
+        || !readNumber("skill_uses", game.player.skillUses)
+        || !readText("weapon", game.player.equippedWeapon)
+        || !readText("armor", game.player.equippedArmor)
+        || !readNumber("room", game.currentRoom)
+        || !readNumber("main_quest", game.mainQuestStage)
+        || !readNumber("side_quest", game.sideQuestStage)) {
         error = "存档格式损坏或版本不匹配。";
         return std::nullopt;
     }
 
-    snapshot.won = wonValue == 1;
+    if (!isVersionOne && !readNumber("coast_quest", game.coastQuestStage)) {
+        error = "存档中的海岸任务记录不完整。";
+        return std::nullopt;
+    }
+    if (!readNumber("finished", finishedValue)) {
+        error = "存档中的结局记录不完整。";
+        return std::nullopt;
+    }
+
+    game.player.playerClass = static_cast<PlayerClass>(classValue);
+    game.finished = finishedValue == 1;
+    if (isVersionOne && game.finished && game.mainQuestStage == 3) {
+        game.finished = false;
+    }
+
+    int inventoryCount = 0;
+    if (!readNumber("inventory_count", inventoryCount) || inventoryCount < 0 || inventoryCount > 200) {
+        error = "存档中的背包数量不正确。";
+        return std::nullopt;
+    }
+    for (int index = 0; index < inventoryCount; ++index) {
+        std::string itemId;
+        if (!readText("inventory_item", itemId)) {
+            error = "存档中的背包内容不完整。";
+            return std::nullopt;
+        }
+        game.player.inventory.push_back(std::move(itemId));
+    }
+
+    int defeatedCount = 0;
+    if (!readNumber("defeated_count", defeatedCount) || defeatedCount < 0 || defeatedCount > 100) {
+        error = "存档中的敌人记录数量不正确。";
+        return std::nullopt;
+    }
+    for (int index = 0; index < defeatedCount; ++index) {
+        std::string enemyId;
+        if (!readText("defeated_enemy", enemyId)) {
+            error = "存档中的敌人记录不完整。";
+            return std::nullopt;
+        }
+        game.defeatedEnemies.insert(std::move(enemyId));
+    }
+
     std::string trailing;
-    // 文件末尾出现多余内容或数值超出范围时，拒绝使用整个存档。
-    if ((wonValue != 0 && wonValue != 1) || (input >> trailing) || !validSnapshot(snapshot)) {
-        error = "存档字段包含非法值。";
+    if ((finishedValue != 0 && finishedValue != 1) || (input >> trailing)
+        || !basicValuesAreValid(game)) {
+        error = "存档包含多余内容或非法数值。";
         return std::nullopt;
     }
 
     error.clear();
-    return snapshot;
+    return game;
 }
 
 } // namespace dndmud
